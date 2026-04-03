@@ -1,113 +1,82 @@
-# 🚗 Cloud-Based Scenario Extraction System (NGSIM)
+# Cloud-Based Scenario Extraction System (NGSIM)
 
-## 📌 Overview
+## Overview
+In this project we built a cloud-based pipeline to extract and process driving scenarios from the NGSIM (Next Generation Simulation) dataset.
 
-This project implements a **cloud-based pipeline** for extracting and processing driving scenarios from the **NGSIM (Next Generation Simulation) dataset**.
+The main goal of the system is to detect different traffic situations (such as car-following, lane changes, near-collisions, and sudden braking) and break them into fixed 5-second windows (50 frames).
+Each window contains:
+- one ego vehicle
+- relevant surrounding vehicles
+- a scenario label
 
-The system identifies traffic scenarios (e.g., car-following, lane changes, near-collisions) and segments them into **fixed 5-second windows (50 frames)** containing:
-
-* One **ego vehicle**
-* Relevant **surrounding vehicles**
-* A **scenario label**
-
-The system was developed in two phases:
-
-* **Phase 1:** Modular monolithic system
-* **Phase 2 (this repository):** Fully **microservices-based cloud architecture**
+We developed the system in two phases:
+- Phase 1: a modular monolithic system
+- Phase 2 (this repository): a mircroservices-based cloud system using Docker
 
 ---
 
-## 🎯 Objectives
-
-* Ingest raw NGSIM trajectory data into the cloud
-* Process and detect meaningful driving scenarios
-* Segment data into **strictly valid 5-second windows**
-* Ensure **frame consistency and data integrity**
-* Demonstrate **cloud-native system design**
-
----
-
-## 🏗️ System Architecture (Phase 2)
-
-The system is decomposed into independent **Dockerized microservices**:
-
-```
-                ┌──────────────┐
-                │   API Gateway│
-                └──────┬───────┘
-                       │
- ┌──────────────┬──────────────┬──────────────┬──────────────┐
- │Preprocessing │ Detection    │ Window       │ Validation   │
- │Service       │ Service      │ Service      │ Service      │
- └──────────────┴──────────────┴──────────────┴──────────────┘
-                       │
-                 Google Cloud Storage
-```
-
-### 🔹 Services
-
-* **Preprocessing Service**
-
-  * Cleans raw NGSIM data
-  * Handles missing values and formatting
-
-* **Detection Service**
-
-  * Identifies scenario types:
-
-    * Car-following
-    * Lane change
-    * Near-collision
-    * Sudden braking
-
-* **Window Service**
-
-  * Extracts candidate 5-second windows
-
-* **Validation Service (CRITICAL IMPROVEMENT)**
-
-  * Ensures:
-
-    * Exactly **50 sequential frames**
-    * Ego vehicle continuity
-    * Surrounding vehicle frame alignment
-  * Rejects invalid windows
-
-* **API Gateway**
-
-  * Orchestrates the pipeline
-  * Provides a single entry point
+## Objectives
+The main objectives of this project were:
+- Read and process raw NGSIM trajectory data
+- Detect meaningfull driving scenarios from the data
+- Segment the data into strictly valid 5-second windows (50 frames)
+- Ensure that all frames in each window are sequential (no gaps)
+- Make sure surrounding vehicles align with the ego vehicles frames
+- Design and implement the system using a cloud/mircoservices approach
 
 ---
 
-## ☁️ Cloud Deployment
+System Architecture (Phase 2)
 
-The system is deployed on **Google Cloud Platform (GCP)**:
+In Phase 2, we redesigned the system into separate Dockerized microservices so that each part of the pipeline runs independently. 
+<img width="606" height="267" alt="image" src="https://github.com/user-attachments/assets/314b4730-8ad3-45af-bc96-79cc58841a05" />
 
-* **Google Cloud Storage (GCS)**
+Each service handles a specific part of the pipeline, and they work together to process the data step by step.
 
-  * Stores raw, processed, and output data
+Services
+Preprocessing Service
+  - Cleans the raw NGSIM data
+  - Handles missing values and formatting issues
 
-* **Compute Engine VM**
+Detection Service
+Identifies scenario types:
+    - Car-following
+    - Lane change
+    - Near-collision
+    - Sudden braking
 
-  * Runs Docker containers
+Window Service
+  - Extracts candidate 5-second windows (50 frames) from detected events
 
-* **Docker Compose**
+Validation Service 
+This was added to fix issues from Phase 1.
+It ensures that:
+    - Each window has exactly 50 sequential frames
+    - The ego vehicle is continuous across all frames
+    - Surrounding vehicle match the same frame sequence
+    - Invalid windows are rejected 
 
-  * Manages all microservices
+API Gateway
+  - Acts as the main entry point for the system
+  - Runs the full pipeline by calling each service in order
 
----
+Cloud Deployment
+We designed the suystem so it can run on the cloud using Docker containers.
+Our setup includes:
+  - Google Cloud Storage (GCS)
+    Used to stre raw, processed, and output data
+  - Compute Engine VM
+    Runs the Docker containers
+  - Docker Compose
+    Used to start and manage all microservices together
 
-## ⚙️ How to Run
-
+## How to Run
 ### 1. Start Services
 
 ```bash
 docker compose up --build -d
 ```
-
 ### 2. Run Full Pipeline
-
 ```bash
 curl -X POST http://localhost:8000/run-all \
   -H "Content-Type: application/json" \
@@ -120,9 +89,7 @@ curl -X POST http://localhost:8000/run-all \
     "validation_details": "processed/validation_details.csv"
   }'
 ```
-
 ### 3. Check Outputs
-
 ```bash
 ls processed/
 ls output/
@@ -130,159 +97,135 @@ ls output/
 
 ---
 
-## 📊 Example Results
+## Example Results
+### Validation Summary
+- Total windows checked:242
+- Passed validation:231
+- Failed validation:11
 
-### ✔️ Validation Summary
+### Accepted Scenario Windows
+- Near collision:79
+- Lane change:69
+- Car following:50
+- Sudden braking:25
 
-* Total windows checked: **242**
-* Passed validation: **231**
-* Failed validation: **11**
-
-### ✔️ Accepted Scenario Windows
-
-* Near collision: **79**
-* Lane change: **69**
-* Car following: **50**
-* Sudden braking: **25**
-
-### ❌ Rejected Windows
-
-* Total rejected: **177**
-* Main reason:
-
-  * `ego_non_sequential_or_incomplete`
+### Rejected Windows
+- Total rejected:177
+- Main reason:
+  `ego_non_sequential_or_incomplete`
 
 ---
 
-## 🔍 Key Improvement from Phase 1 (VERY IMPORTANT)
+## Key Improvement from Phase 1 
+### What went wrong in Phase 1
+In Phase 1, we assumed that:
+  - A 5-second window = 50 rows
+However, we didn't properly check
+  - whether the frames were actually sequential 
+  - whether the ego and surrpunding vehicles had matching frame indices  
 
-### 🚨 Problem in Phase 1
+Because of this, we ended up with:
+  - broken or skipped frame sequences
+  - inconsistent scenario windows
+  - unreliable data for further analysis
 
-Phase 1 incorrectly assumed:
+### What we fixed in Phase 2 (based on TA feedback)
+To addressed these issues, we added a strict validation step before saving any window.
 
-* A 5-second window = 50 rows
-* ❌ Did NOT verify if frames were sequential
-* ❌ Did NOT ensure ego/surrounding vehicles aligned
+#### Ego Vehicle Validation
+  - Must have exactly 50 frames
+  - Frames must be strictly sequential (no gaps)
 
-This led to:
+#### Surrounding Vehicle Validation
+  - Must follow the same frame sequence as the ego vehicle
+  - Must not have missing or misaligned frames
 
-* Broken time sequences
-* Inconsistent scenario data
-* Incorrect model inputs
+#### Window Rejection System
+  - Invalid windows are not saved
+  - Each rejected windo includes a clear reason
+  - All rejected cases are stored in:
+    `windows_rejected.csv`
 
----
+### Impact of these changes
+These improvements made a big difference in  data quality:
+  - Ensures true temporal consistency
+  - Removes invalid or misleading data
+  - produces cleaner and more reliable scenario windows
 
-### ✅ Phase 2 Solution (TA Feedback Applied)
+This makes the dataset more suitable for:
+  - machine learning models
+  - autonomous driving analysis
 
-We implemented **strict validation logic**:
 
-#### ✔️ Ego Vehicle Validation
+## Output Files
 
-* Must have **exactly 50 frames**
-* Frames must be **strictly sequential**
+| File                     | Description                         |
+| ------------------------ | -----------------------------       |
+| `cleaned_data.csv`       | Preprocessed dataset                |
+| `windows_summary.csv`    | Accepted scenario windows           |
+| `windows_rejected.csv`   | Rejected windows with reasons       |
+| `validation_report.json` | Overall validation sumary           |
+| `validation_details.csv` | Detailed validation logs per window |
 
-#### ✔️ Surrounding Vehicle Validation
-
-* Must match the **same frame sequence**
-* Must not have missing frames
-
-#### ✔️ Window Rejection System
-
-Invalid windows are:
-
-* **Rejected**
-* Logged with explicit reasons
-* Saved in `windows_rejected.csv`
-
----
-
-### 📈 Impact
-
-* Ensures **true temporal consistency**
-* Improves **data quality**
-* Makes dataset suitable for:
-
-  * Machine learning
-  * Autonomous driving simulations
-
----
-
-## 📂 Output Files
-
-| File                     | Description                   |
-| ------------------------ | ----------------------------- |
-| `cleaned_data.csv`       | Preprocessed dataset          |
-| `windows_summary.csv`    | Accepted windows              |
-| `windows_rejected.csv`   | Rejected windows with reasons |
-| `validation_report.json` | Overall validation stats      |
-| `validation_details.csv` | Per-window validation logs    |
-
----
-
-## 🎥 Scenario Visualization
-
-Each scenario is visualized using:
-
-* Ego vehicle (**red**)
-* Surrounding vehicles (**blue**)
-* Frame-by-frame animation (50 frames)
+## Scenario Visualization
+We visualize each scenario using:
+  - Ego vehicle (red)
+  - Surrounding vehicles (blue)
+  - Frame-by-frame animation (50 frames)
 
 ### Example Scenarios:
-
-* Car-following
-* Lane change
-* Near-collision
-* Sudden braking
+  - Car-following
+  - Lane change
+  - Near-collision
+  - Sudden braking
 
 ### Improvements over Phase 1:
-
-* Consistent frame sequences
-* Only validated windows visualized
-* Cleaner, more accurate animations
-
----
-
-## 🔄 Phase 1 vs Phase 2
-
-| Feature            | Phase 1          | Phase 2       |
-| ------------------ | ---------------- | ------------- |
-| Architecture       | Monolithic       | Microservices |
-| Deployment         | Single app       | Docker + GCP  |
-| Validation         | Weak             | Strict        |
-| Frame consistency  | ❌ Not guaranteed | ✅ Enforced    |
-| Rejection handling | ❌ None           | ✅ Implemented |
-| Scalability        | Limited          | High          |
+  - Frames are now always sequential and consistent
+  - Only validated windows are used
+  - Visualizations are more accurate and stable
 
 ---
 
-## 🚀 Future Work (Bonus)
+Phase 1 vs Phase 2
 
-* Cloud Run / serverless pipeline
-* Apache Beam / Dataflow integration
-* Real-time streaming scenario detection
-* Monitoring & logging dashboards
+| Feature            | Phase 1          | Phase 2               |
+| ------------------ | ---------------- | -------------         |
+| Architecture       | Monolithic       | Microservices         |
+| Deployment         | Single app       | Docker + cloud-ready  |
+| Validation         | Weak             | Strict                |
+| Frame consistency  | Not guaranteed   | Enforced              |
+| Rejection handling | None             | Implemented           |
+| Scalability        | Limited          | Improved              |
 
 ---
 
-## 👥 Team Contribution
+## Future Work 
+
+Some improvements we could consider next:
+  - Deploying services using Cloud Run / serverless
+  - Using Dataflow or Apache Beam for scalability
+  - Real-time scenario detection from streaming data
+  - Adding monitoring and logging dashboards
+
+---
+
+## Team Contribution
 
 All team members contributed to:
-
-* System design
-* Microservices implementation
-* Cloud deployment
-* Scenario logic & validation
+  - system design
+  - microservices implementation
+  - cloud setup
+  - design a cleaner system architecture
 
 ---
 
-## 📌 Conclusion
+## Conclusion
 
-This project demonstrates a **robust, cloud-native system** for extracting high-quality driving scenarios from real-world data.
+Overall, this project demonstrates how we improved a basic pipeline into a more reliable, cloud-ready system.
 
-The transition from Phase 1 to Phase 2 significantly improved:
-
-* Data correctness
-* System scalability
-* Architectural design
+Moving from Phase 1 to Phase 2 helped us:
+  - fix major data consistency issues
+  - improve scalability
+  - design a cleaner system architecture 
 
 ---
