@@ -1,0 +1,76 @@
+services:
+  preprocessing-service:
+    build:
+      context: .
+      dockerfile: preprocessing_service/Dockerfile
+    container_name: preprocessing-service
+    volumes:
+      - ./raw:/app/raw
+      - ./processed:/app/processed
+      - ./output:/app/output
+    ports:
+      - "8001:8001"
+
+  detection-service:
+    build:
+      context: .
+      dockerfile: detection_service/Dockerfile
+    container_name: detection-service
+    volumes:
+      - ./raw:/app/raw
+      - ./processed:/app/processed
+      - ./output:/app/output
+    ports:
+      - "8002:8002"
+    depends_on:
+      - preprocessing-service
+
+  window-service:
+    build:
+      context: .
+      dockerfile: window_service/Dockerfile
+    container_name: window-service
+    volumes:
+      - ./raw:/app/raw
+      - ./processed:/app/processed
+      - ./output:/app/output
+    ports:
+      - "8003:8003"
+    depends_on:
+      - detection-service
+
+  validation-service:
+    build:
+      context: .
+      dockerfile: validation_service/Dockerfile
+    container_name: validation-service
+    volumes:
+      - ./raw:/app/raw
+      - ./processed:/app/processed
+      - ./output:/app/output
+    ports:
+      - "8004:8004"
+    depends_on:
+      - window-service
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api_gateway/Dockerfile
+    container_name: api-gateway
+    environment:
+      PREPROCESSING_URL: http://preprocessing-service:8001
+      DETECTION_URL: http://detection-service:8002
+      WINDOW_URL: http://window-service:8003
+      VALIDATION_URL: http://validation-service:8004
+    volumes:
+      - ./raw:/app/raw
+      - ./processed:/app/processed
+      - ./output:/app/output
+    ports:
+      - "8000:8000"
+    depends_on:
+      - preprocessing-service
+      - detection-service
+      - window-service
+      - validation-service
